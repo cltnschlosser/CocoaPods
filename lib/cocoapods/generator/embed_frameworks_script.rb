@@ -126,6 +126,49 @@ module Pod
             fi
           }
 
+          # Copies and strips a vendored framework for previews
+          install_preview_framework()
+          {
+            if [ -r "${BUILT_PRODUCTS_DIR}/$1" ]; then
+              local source="${BUILT_PRODUCTS_DIR}/$1"
+            elif [ -r "${BUILT_PRODUCTS_DIR}/$(basename "$1")" ]; then
+              local source="${BUILT_PRODUCTS_DIR}/$(basename "$1")"
+            elif [ -r "$1" ]; then
+              local source="$1"
+            fi
+
+            local destination="${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}"
+
+            if [ -L "${source}" ]; then
+              echo "Symlinked..."
+              source="$(readlink "${source}")"
+            fi
+
+            # Use filter instead of exclude so missing patterns don't throw errors.
+            echo "rsync --delete -av "${RSYNC_PROTECT_TMP_FILES[@]}" --links --filter \\"- CVS/\\" --filter \\"- .svn/\\" --filter \\"- .git/\\" --filter \\"- .hg/\\" --filter \\"- Headers\\" --filter \\"- PrivateHeaders\\" --filter \\"- Modules\\" \\"${source}\\" \\"${destination}\\""
+            rsync --delete -av "${RSYNC_PROTECT_TMP_FILES[@]}" --links --filter "- CVS/" --filter "- .svn/" --filter "- .git/" --filter "- .hg/" --filter "- Headers" --filter "- PrivateHeaders" --filter "- Modules" "${source}" "${destination}"
+
+            local basename
+            basename="$(basename -s .framework "$1")"
+            binary="${destination}/${basename}.framework/${basename}"
+
+            if ! [ -r "$binary" ]; then
+              binary="${destination}/${basename}"
+            elif [ -L "${binary}" ]; then
+              echo "Destination binary is symlinked..."
+              dirname="$(dirname "${binary}")"
+              binary="${dirname}/$(readlink "${binary}")"
+            fi
+
+            # Strip invalid architectures so "fat" simulator / device frameworks work on device
+            if [[ "$(file "$binary")" == *"dynamically linked shared library"* ]]; then
+              strip_invalid_archs "$binary"
+            fi
+
+            # Resign the code if required by the build settings to avoid unstable apps
+            code_sign_if_enabled "${destination}/$(basename "$1")"
+          }
+
           # Copies and strips a vendored dSYM
           install_dsym() {
             local source="$1"
@@ -211,6 +254,7 @@ module Pod
           script << %(if [[ "$CONFIGURATION" == "#{config}" ]]; then\n)
           frameworks_with_dsyms.each do |framework_with_dsym|
             script << %(  install_framework "#{framework_with_dsym.source_path}"\n)
+            script << %(  install_preview_framework "#{framework_with_dsym.source_path}"\n)
             # Vendored frameworks might have a dSYM file next to them so ensure its copied. Frameworks built from
             # sources will have their dSYM generated and copied by Xcode.
             script << %(  install_dsym "#{framework_with_dsym.dsym_path}"\n) unless framework_with_dsym.dsym_path.nil?
