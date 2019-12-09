@@ -628,6 +628,15 @@ module Pod
     # @param  [Specification] spec
     #         The spec this embed frameworks script path is for.
     #
+    # @return [Pathname] The absolute path of the embed frameworks script for the given spec.
+    #
+    def embed_frameworks_script_path_for_library_spec(spec)
+      support_files_dir + "#{spec.name}-frameworks.sh"
+    end
+
+    # @param  [Specification] spec
+    #         The spec this embed frameworks script path is for.
+    #
     # @return [Pathname] The absolute path of the embed frameworks script input file list for the given spec.
     #
     def embed_frameworks_script_input_files_path_for_spec(spec)

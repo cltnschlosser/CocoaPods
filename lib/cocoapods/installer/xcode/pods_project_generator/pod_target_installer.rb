@@ -143,6 +143,34 @@ module Pod
             super.tap do |native_target|
               remove_pod_target_xcconfig_overrides_from_target(target.build_settings, native_target)
             end
+
+            target.library_specs.each do |library_spec|
+              create_target_embed_frameworks_script(library_spec)
+            end
+          end
+
+          # Creates a script that embeds the frameworks to the bundle of the test target.
+          #
+          # @param [Specification] test_spec
+          #        The test spec to create the embed frameworks script for.
+          #
+          # @return [void]
+          #
+          def create_target_embed_frameworks_script(library_spec)
+            path = target.embed_frameworks_script_path_for_library_spec(library_spec)
+            pod_targets = target.recursive_dependent_targets
+            framework_paths_by_config = target.user_build_configurations.keys.each_with_object({}) do |config, paths_by_config|
+              paths_by_config[config] = pod_targets.flat_map do |pod_target|
+                spec_paths_to_include = pod_target.library_specs.map(&:name)
+                spec_paths_to_include << library_spec.name if pod_target == target
+                pod_target.framework_paths.values_at(*spec_paths_to_include).flatten.compact.uniq
+              end
+            end
+            unless framework_paths_by_config.each_value.all?(&:empty?)
+              generator = Generator::EmbedPodFrameworksScript.new(framework_paths_by_config)
+              update_changed_file(generator, path)
+              add_file_to_support_group(path)
+            end
           end
 
           # Removes overrides of the `pod_target_xcconfig` settings from the target's
